@@ -47,13 +47,6 @@ public sealed class ConfigException(string message) : Exception(message);
 /// <summary>Читает team.json и проверяет его с понятными сообщениями.</summary>
 public static class ConfigLoader
 {
-    private static readonly JsonSerializerOptions Json = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-    };
-
     private static readonly Dictionary<string, DayOfWeek> DayNames = new(StringComparer.OrdinalIgnoreCase)
     {
         ["пн"] = DayOfWeek.Monday, ["вт"] = DayOfWeek.Tuesday, ["ср"] = DayOfWeek.Wednesday,
@@ -64,7 +57,7 @@ public static class ConfigLoader
         ["sun"] = DayOfWeek.Sunday,
     };
 
-    private sealed class RawConfig
+    internal sealed class RawConfig
     {
         public string? Start { get; set; }
         public string? End { get; set; }
@@ -77,7 +70,7 @@ public static class ConfigLoader
         public List<RawPerson> People { get; set; } = [];
     }
 
-    private sealed class RawPerson
+    internal sealed class RawPerson
     {
         public string? Name { get; set; }
         public List<string> Unavailable { get; set; } = [];
@@ -100,7 +93,7 @@ public static class ConfigLoader
         RawConfig raw;
         try
         {
-            raw = JsonSerializer.Deserialize<RawConfig>(json, Json) ?? throw new ConfigException("Пустой файл");
+            raw = JsonSerializer.Deserialize(json, ConfigJson.Default.RawConfig) ?? throw new ConfigException("Пустой файл");
         }
         catch (JsonException e)
         {
@@ -206,3 +199,14 @@ public static class ConfigLoader
         return Enumerable.Range(0, to.DayNumber - from.DayNumber + 1).Select(from.AddDays);
     }
 }
+
+/// <summary>
+/// Сериализатор, сгенерированный при компиляции: работает без рефлексии, поэтому
+/// исполняемый файл можно урезать (PublishTrimmed) и он быстрее стартует.
+/// </summary>
+[JsonSourceGenerationOptions(
+    PropertyNameCaseInsensitive = true,
+    ReadCommentHandling = JsonCommentHandling.Skip,
+    AllowTrailingCommas = true)]
+[JsonSerializable(typeof(ConfigLoader.RawConfig))]
+internal sealed partial class ConfigJson : JsonSerializerContext;
