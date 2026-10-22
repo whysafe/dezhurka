@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet build -c Release
+      - run: dotnet test -c Release --no-build
+      - name: Plan the example team
+        run: dotnet run -c Release --project src/Dezhurka -- plan examples/team.json --format md >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        rid: [win-x64, linux-x64, osx-arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      # Один исполняемый файл, .NET на машине пользователя не нужен
+      - run: dotnet publish src/Dezhurka -c Release -r ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:PublishTrimmed=true -o dist/${{ matrix.rid }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dezhurka-${{ matrix.rid }}
+          path: dist/${{ matrix.rid }}/dezhurka*
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f=$(ls dist/${{ matrix.rid }}/dezhurka* | head -1)
+          ext=; [[ "$f" == *.exe ]] && ext=.exe
+          cp "$f" "dezhurka-${{ matrix.rid }}$ext"
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" "dezhurka-${{ matrix.rid }}$ext" --clobber
